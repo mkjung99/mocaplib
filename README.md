@@ -1,2 +1,2 @@
-# mocaplib
-MoCapLib: Motion Capture Library
+# MoCapLib
+MoCapLib: Library for Motion Capture data processing
