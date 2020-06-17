@@ -1,5 +1,5 @@
 # MoCapLib
-MoCapLib: Library for Motion Capture data processing
+MoCapLib: Library for Motion Capture data processing and analysis
 
 ## Description
 The aim of this repository is to provide a simple Python-based library for motion capture data processing and analysis.
@@ -12,9 +12,10 @@ pip install mocaplib
 ```
 
 ## Usage
-Currently, there is only one sub-module availabe, 'mocaplib.gapfill'.
+Currently, there is only one sub-module availabe, **mocaplib.gapfill**.
+
+Rows of ndarray values for marker coordinates should be filled with numpy.nan for occluded (blocked) frames.
 ```python
-import mocaplib as mcl
 import mocaplib.gapfill as gf
 
 # numpy is required in order to provide necessary markers' coordinate values
