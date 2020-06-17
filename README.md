@@ -21,7 +21,7 @@ import mocaplib.gapfill as gf
 import numpy as np
 
 # 'fill_marker_gap_interp()' function will update the given ndarray by filling its gaps using bspline interpolation
-# 'tgt_mkr_pos0': a 2D ndarray with the shape of (n, 3) of a target marker position to fill the gaps
+# 'tgt_mkr_pos0': a 2D (n, 3) ndarray of a target marker position to fill the gaps
 # 'n' is the total number of frames
 tgt_mkr_pos0 = np.array((n, 3), dtype=np.float32)
 # 'ret0': either True or False, True if there is any frame updated, False if there is no frame updated
@@ -29,10 +29,10 @@ tgt_mkr_pos0 = np.array((n, 3), dtype=np.float32)
 ret0, updated_frs_mask0 = gf.fill_marker_gap_interp(tgt_mkr_pos0)
 
 # 'fill_marker_gap_pattern()' function will update the given ndarray by filling its gaps using a donor marker
-# 'tgt_mkr_pos1': a 2D ndarray with the shape of (n, 3) of a target marker position to fill the gaps
+# 'tgt_mkr_pos1': a 2D (n, 3) ndarray of a target marker position to fill the gaps
 # 'n' is the total number of frames
 tgt_mkr_pos1 = np.array((n, 3), dtype=np.float32)
-# a 2D ndarray with the shape of (n, 3) of a donor marker position
+# 'dnr_mkr_pos': a 2D (n, 3) ndarray of a donor marker position
 # 'n' is the total number of frames
 dnr_mkr_pos = np.array((n, 3), dtype=np.float32)
 # 'ret1': either True or False, True if there is any frame updated, False if there is no frame updated
@@ -40,10 +40,10 @@ dnr_mkr_pos = np.array((n, 3), dtype=np.float32)
 ret1, updated_frs_mask1 = gf.fill_marker_gap_pattern(tgt_mkr_pos1, dnr_mkr_pos)
 
 # 'fill_marker_gap_rbt()' function will update the given ndarray by filling its gaps using a cluster of 3 markers
-# 'tgt_mkr_pos2': a 2D ndarray with the shape of (n, 3) of a target marker position to fill the gaps
+# 'tgt_mkr_pos2': a 2D (n, 3) ndarray of a target marker position to fill the gaps
 # 'n' is the total number of frames
 tgt_mkr_pos2 = np.array((n, 3), dtype=np.float32)
-# 'cl_mkr_pos': a 3D ndarray with the shape of (m, n, 3) of the cluster markers
+# 'cl_mkr_pos': a 3D (m, n, 3) ndarray of the cluster markers
 # 'm' (at least 3) is the number of markers, and 'n' is the total number of frames
 cl_mkr_pos = np.array((m, n, 3), dtype=np.float32)
 # 'ret2': either True or False, True if there is any frame updated, False if there is no frame updated
@@ -53,6 +53,13 @@ ret2, updated_frs_mask2 = gf.fill_marker_gap_rbt(tgt_mkr_pos2, cl_mkr_pos)
 ## Dependencies
 - [NumPy](https://numpy.org/)
 - [SciPy](https://www.scipy.org/)
+
+## References
+- [Smolka, J. and Lukasik, E., 2016, July. "The rigid body gap filling algorithm". In 2016 9th International Conference on Human System Interactions (HSI) (pp. 337-343). IEEE.](https://doi.org/10.1109/HSI.2016.7529654)
+- [Wikipedia: "Kabsch algorithm"](https://en.wikipedia.org/wiki/Kabsch_algorithm)
+- [Kwon3D: "Computation of the Rotation Matrix"](http://www.kwon3d.com/theory/jkinem/rotmat.html)
+- [Vicon: "What Gap Filling Algorithms are used Nexus 2?"](http://www.vicon.com/support/faqs/?q=what-gap-filling-algorithms-are-used-nexus-2)
+- [Qualisys: "Featuring the Trajectory Editor in QTM"](https://www.qualisys.com/webinars/viewing-gap-filling-and-smoothing-data-with-the-trajectory-editor/)
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
