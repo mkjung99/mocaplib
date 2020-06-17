@@ -12,7 +12,7 @@ pip install mocaplib
 ```
 
 ## Usage
-Currently, there is only one sub-module availabe, **mocaplib.gapfill**.
+Currently, there is only one sub-module available, **mocaplib.gapfill**.
 
 For the details of GapFill module, please see here: https://github.com/mkjung99/gapfill
 
