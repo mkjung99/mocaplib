@@ -23,7 +23,7 @@ SOFTWARE.
 """
 
 __author__ = "Moon Ki Jung, https://github.com/mkjung99/mocaplib"
-__version__ = "0.0.1"
+__version__ = "0.0.3"
 
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline
