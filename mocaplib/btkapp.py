@@ -52,19 +52,21 @@ def get_sub_dict_metadata(md, dict_parent):
     md_label = md.GetLabel()
     if md.HasInfo():
         md_info = md.GetInfo()
-        # md_dim = md_info.GetDimension(0)
-        # md_dims = md_info.GetDimensions()
-        # md_dims_prod = md_info.GetDimensionsProduct()
+        md_dims = md_info.GetDimensions()
         md_fmt = md_info.GetFormatAsString()
         if md_fmt == 'Byte' or md_fmt == 'Integer':
-            md_val = np.squeeze(np.array(md_info.ToInt(), dtype=np.int32))
-            if len(md_val.shape)==0 or (len(md_val.shape)==1 and md_val.shape[0]==1): md_val = np.int32(md_val.item())
+            md_val = np.array(md_info.ToInt(), dtype=np.int32)
         if md_fmt == 'Real':
-            md_val = np.squeeze(np.array(md_info.ToDouble(), dtype=np.float32))
-            if len(md_val.shape)==0 or (len(md_val.shape)==1 and md_val.shape[0]==1): md_val = np.float32(md_val.item())
+            md_val = np.array(md_info.ToDouble(), dtype=np.float32)
         if md_fmt == 'Char':
-            md_val = np.squeeze(np.array([x.strip() for x in md_info.ToString()], dtype=str))
-            if len(md_val.shape)==0 or (len(md_val.shape)==1 and md_val.shape[0]==1): md_val = md_val.item()
+            md_val = np.array([x.strip() for x in md_info.ToString()], dtype=str)
+        if len(md_val.shape)==1 and md_val.shape[0]==1:
+            md_val = md_val.item()
+        else:                    
+            if md_fmt == 'Char':
+                md_val = np.reshape(md_val, md_dims[::-1][:-1])
+            else:
+                md_val = np.reshape(md_val, md_dims[::-1])
         dict_parent.update({md_label: md_val})
     else:
         dict_parent.update({md_label:{}})
@@ -73,8 +75,7 @@ def get_sub_dict_metadata(md, dict_parent):
         for i in range(n_child):
             md_child = md.GetChild(i)
             get_sub_dict_metadata(md_child, dict_parent[md_label])
-        
-
+    
 def get_dict_events(acq):
     if acq.IsEmptyEvent(): return None
     dict_events = {}
