@@ -14,6 +14,10 @@ pip install mocaplib
 ## Usage
 Currently, MoCapLib is under heavy development.
 
+## Installation of BTK (Microsoft Windows x64 platforms) for C3D file parsing
+- [Conda-forge](https://anaconda.org/conda-forge/btk) (find the [details](https://github.com/Biomechanical-ToolKit/BTKCore/issues/28#issuecomment-572571063))
+- [PyPI](https://pypi.org/project/pyBTK/)
+
 ## Dependencies
 - [NumPy](https://numpy.org/)
 - [SciPy](https://www.scipy.org/)
