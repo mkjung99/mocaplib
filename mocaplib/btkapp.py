@@ -1,3 +1,29 @@
+"""
+MIT License
+
+Copyright (c) 2020 Moon Ki Jung
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+__author__ = "Moon Ki Jung"
+
 import os
 import sys
 import numpy as np
@@ -52,6 +78,7 @@ def get_sub_dict_metadata(md, dict_parent):
     md_label = md.GetLabel()
     if md.HasInfo():
         md_info = md.GetInfo()
+        md_dim = md_info.GetDimension(0)
         md_dims = md_info.GetDimensions()
         md_fmt = md_info.GetFormatAsString()
         if md_fmt == 'Byte' or md_fmt == 'Integer':
@@ -60,11 +87,14 @@ def get_sub_dict_metadata(md, dict_parent):
             md_val = np.array(md_info.ToDouble(), dtype=np.float32)
         if md_fmt == 'Char':
             md_val = np.array([x.strip() for x in md_info.ToString()], dtype=str)
-        if len(md_val.shape)==1 and md_val.shape[0]==1:
-            md_val = md_val.item()
-        else:                    
-            if md_fmt == 'Char':
+        if md_fmt == 'Char':
+            if md_dim==0 or (len(md_val.shape)==1 and md_val.shape[0]==1):
+                md_val = md_val.item()
+            else:
                 md_val = np.reshape(md_val, md_dims[::-1][:-1])
+        else:
+            if md_dim == 0:
+                md_val = md_val.item()
             else:
                 md_val = np.reshape(md_val, md_dims[::-1])
         dict_parent.update({md_label: md_val})
