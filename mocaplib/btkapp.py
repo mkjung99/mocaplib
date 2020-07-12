@@ -88,7 +88,7 @@ def get_sub_dict_metadata(md, dict_parent):
         if md_fmt == 'Char':
             md_val = np.array([x.strip() for x in md_info.ToString()], dtype=str)
         if md_fmt == 'Char':
-            if md_dim==0 or (len(md_val.shape)==1 and md_val.shape[0]==1):
+            if len(md_dims) <= 1:
                 md_val = md_val.item()
             else:
                 md_val = np.reshape(md_val, md_dims[::-1][:-1])
