@@ -30,13 +30,45 @@ import numpy as np
 import btk
 #%%
 
-def get_acq(f_path=None):
+def open_c3d(f_path=None):
     if f_path is None: return None
     reader = btk.btkAcquisitionFileReader()
     reader.SetFilename(f_path)
     reader.Update()
     acq = reader.GetOutput()
     return acq
+
+def save_c3d(acq, f_path):
+    if f_path is None: return None
+    writer = btk.btkAcquisitionFileWriter()
+    writer.SetInput(acq)
+    writer.SetFilename(f_path)
+    return writer.Update()
+
+def get_first_frame(acq):
+    return np.int32(acq.GetFirstFrame())
+
+def get_last_frame(acq):
+    return np.int32(acq.GetLastFrame())
+
+def get_num_frames(acq):
+    return np.int32(acq.GetPointFrameNumber())
+
+def get_video_fps(acq):
+    return np.float32(acq.GetPointFrequency())
+
+def get_analog_video_ratio(acq):
+    return np.int32(acq.GetNumberAnalogSamplePerFrame())
+
+def get_analog_fps(acq):
+    return np.float32(acq.GetAnalogFrequency())
+
+def get_video_frames(acq):
+    first_fr = get_first_frame(acq)
+    last_fr = get_last_frame(acq)
+    n_frs = get_num_frames(acq)
+    frs = np.linspace(first_fr, last_fr, n_frs, dtype=np.int32)
+    return frs
 
 def get_point_names(acq, tgt_types=None):
     pt_names = []
@@ -67,15 +99,16 @@ def get_analog_names(acq):
     for sig in btk.Iterate(acq.GetAnalogs()):
         sig_names.append(sig.GetLabel())
     return sig_names
-
-def get_dict_metadata(acq):
+    
+def get_dict_metadata(acq, desc=False):
     dict_md = {}
     md_root = acq.GetMetaData()
-    get_sub_dict_metadata(md_root, dict_md)
+    get_sub_dict_metadata(md_root, dict_md, desc)
     return dict_md['ROOT']
 
-def get_sub_dict_metadata(md, dict_parent):
+def get_sub_dict_metadata(md, dict_parent, desc=False):
     md_label = md.GetLabel()
+    md_desc = md.GetDescription()
     if md.HasInfo():
         md_info = md.GetInfo()
         md_dim = md_info.GetDimension(0)
@@ -97,14 +130,19 @@ def get_sub_dict_metadata(md, dict_parent):
                 md_val = md_val.item()
             else:
                 md_val = np.reshape(md_val, md_dims[::-1])
-        dict_parent.update({md_label: md_val})
+        if desc:
+            dict_parent.update({md_label: {}})
+            dict_parent[md_label].update({'VAL': md_val})
+            dict_parent[md_label].update({'DESC': md_desc})
+        else:
+            dict_parent.update({md_label: md_val})
     else:
         dict_parent.update({md_label:{}})
     if md.HasChildren():
         n_child = md.GetChildNumber()
         for i in range(n_child):
             md_child = md.GetChild(i)
-            get_sub_dict_metadata(md_child, dict_parent[md_label])
+            get_sub_dict_metadata(md_child, dict_parent[md_label], desc)
     
 def get_dict_events(acq):
     if acq.IsEmptyEvent(): return None
@@ -202,3 +240,57 @@ def get_dict_analogs(acq):
     dict_sigs.update({'GAIN': np.array(sig_gain, dtype=np.int32)})
     dict_sigs.update({'RESOLUTION': np.int32(acq.GetAnalogResolution())})
     return dict_sigs
+
+def get_fp_info(acq):
+    fpe = btk.btkForcePlatformsExtractor()
+    fpe.SetInput(acq)
+    fpe.Update()
+    fpc = fpe.GetOutput()
+    n_fp = fpc.GetItemNumber()
+    dict_fp = {}
+    for i in range(n_fp):
+        dict_fp.update({i:{}})
+        fp = fpc.GetItem(i)
+        type = fp.GetType()
+        dict_fp[i].update({'TYPE': type})
+        n_chs = fp.GetChannelNumber()
+        dict_fp[i].update({'VALUES':{}})
+        labels = []
+        for j in range(n_chs):
+            ch = fp.GetChannel(j)
+            ch_name = ch.GetLabel()
+            labels.append(ch_name)
+            # dict_fp[i]['channel'].update({ch_name:{}})
+            ch_val = ch.GetValues()
+            dict_fp[i]['VALUES'].update({ch_name: np.asarray(np.squeeze(ch_val), dtype=np.float32)})
+        dict_fp[i].update({'LABELS': labels})
+        corners = fp.GetCorners()
+        dict_fp[i].update({'CORNERS': np.asarray(corners.T, dtype=np.float32)})
+        origin = fp.GetOrigin()
+        dict_fp[i].update({'ORIGIN': np.asarray(np.squeeze(origin.T), dtype=np.float32)})
+        cal_matrix = fp.GetCalMatrix()
+        dict_fp[i].update({'CAL_MATRIX': np.asarray(cal_matrix.T, dtype=np.float32)})
+    return dict_fp
+
+def add_metadata(acq, parent_name, name, data, desc=None):
+    md_root = acq.GetMetaData()
+    grp_names = []
+    n_child = md_root.GetChildNumber()
+    for i in range(n_child):
+        grp_names.append(md_root.GetChild(i).GetLabel())
+    if parent_name not in grp_names:
+        return False
+    md_parent = md_root.FindChild(parent_name).value()
+    btk.btkMetaDataCreateChild(md_parent, name, data)
+    md_child = md_parent.FindChild(name).value()
+    if desc is None or type(desc) is not str:
+        child_desc = ''
+    else:
+        child_desc = desc
+    md_child.SetDescription(child_desc)
+    return True
+
+def change_point_name(acq, old_name, new_name):
+    pt = acq.FindPoint(old_name).value()
+    pt.SetLabel(new_name)
+    
