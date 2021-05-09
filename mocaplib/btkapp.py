@@ -276,23 +276,13 @@ def get_fp_info(acq):
         dict_fp[i].update({'CAL_MATRIX': np.asarray(cal_matrix.T, dtype=np.float32)})
     return dict_fp
 
-def get_fp_output(acq, threshold=0.0):
+def get_fp_output(acq, threshold=None):
     pfe = btk.btkForcePlatformsExtractor()
     pfe.SetInput(acq)
     pfe.Update()
     pfc = pfe.GetOutput()
     if pfc.IsEmpty():
         return None
-    # an_freq = acq.GetAnalogFrequency()
-    # an_fr_nums = acq.GetAnalogFrameNumber()
-    # an_res = acq.GetAnalogResolution()
-    # av_ratio = acq.GetNumberAnalogSamplePerFrame()
-    # first_fr_no = acq.GetFirstFrame()
-    # last_fr_no = acq.GetLastFrame()
-    # first_fr_idx = first_fr_no-1
-    # last_fr_idx = last_fr_no-1
-    # md_dict = get_dict_metadata(acq)
-    # point_unit = md_dict['POINT'].get('UNITS', None)
     point_unit = acq.GetPointUnit()
     point_scale = 1.0 if point_unit=='m' else 0.001
     rgx_fp = re.compile(r'\S*(\d*[FMP]\d*[XxYyZz]\d*)')
@@ -307,7 +297,7 @@ def get_fp_output(acq, threshold=0.0):
             o_x = 0.0
             o_y = 0.0
             o_z = (-1.0)*fp_org_raw[2]*fp_z_check
-        elif fp_type==2 or fp_type==4:
+        elif fp_type in [2, 4]:
             o_x = (-1.0)*fp_org_raw[0]*fp_z_check
             o_y = (-1.0)*fp_org_raw[1]*fp_z_check
             o_z = (-1.0)*fp_org_raw[2]*fp_z_check
@@ -318,13 +308,16 @@ def get_fp_output(acq, threshold=0.0):
             fp_len_a = np.abs(fp_org_raw[0])
             fp_len_b = np.abs(fp_org_raw[1])
         fp_corners = fp.GetCorners().T*point_scale
-        fp_cen = np.mean(fp_corners, axis=0)            
+        # fp_corners[0] #(+x, +y)
+        # fp_corners[1] #(-x, +y)
+        # fp_corners[2] #(-x, -y)
+        # fp_corners[3] #(+x, -y)        
+        fp_cen = np.mean(fp_corners, axis=0)
+        fp_len_x = (np.linalg.norm(fp_corners[0]-fp_corners[1])+np.linalg.norm(fp_corners[3]-fp_corners[2]))*0.5
+        fp_len_y = (np.linalg.norm(fp_corners[0]-fp_corners[3])+np.linalg.norm(fp_corners[1]-fp_corners[2]))*0.5
         fp_p0 = fp_cen
         fp_p1 = 0.5*(fp_corners[0]+fp_corners[3])
         fp_p2 = 0.5*(fp_corners[0]+fp_corners[1])
-        # fp_p0 = fp_corners[2] #(-x, -y)
-        # fp_p1 = fp_corners[3] #(+x, -y)
-        # fp_p2 = fp_corners[1] #(-x, +y)
         fp_v0 = fp_p1-fp_p0
         fp_v1 = fp_p2-fp_p0
         fp_v0_u = fp_v0/np.linalg.norm(fp_v0)
@@ -345,20 +338,60 @@ def get_fp_output(acq, threshold=0.0):
             ch_name = fp.GetChannel(ch_idx).GetLabel()
             ch = acq.GetAnalog(ch_name)
             fm_name =  str.upper(rgx_fp.findall(ch.GetLabel())[0])
-            if fp_type==2 or fp_type==4:
+            # assign channel names
+            if fp_type == 1:
+                # assume that the order of input analog channels are as follows:
+                # 'FX', 'FY', 'FZ', 'PX', 'PY', 'TZ'
+                label = ['FX', 'FY', 'FZ', 'PX', 'PY', 'TZ'][ch_idx]            
+            elif fp_type in [2, 4]:
                 label = re.sub(r'\d', r'', fm_name)
             elif fp_type == 3:
+                # assume that the order of input analog channels are as follows:
+                # 'FX12', 'FX34', 'FY14', 'FY23', 'FZ1', 'FZ2', 'FZ3', 'FZ4'
                 label = ['FX12', 'FX34', 'FY14', 'FY23', 'FZ1', 'FZ2', 'FZ3', 'FZ4'][ch_idx]
+            # assign channel scale factors
+            if fp_type == 1:
+                if label.startswith('F'):
+                    # assume that the force unit is 'N'
+                    ch_scale[label] = 1.0
+                elif label.startswith('T'):
+                    # assume that the torque unit is 'Nmm'
+                    ch_scale[label] = 0.001
+                    if ch.GetUnit()=='Nm': ch_scale[label] = 1.0
+                elif label.startswith('P'):
+                    # assume that the position unit is 'mm'
+                    ch_scale[label] = 0.001
+                    if ch.GetUnit()=='m': ch_scale[label] = 1.0
+            elif fp_type in [2, 3, 4]:
+                if label.startswith('F'):
+                    # assume that the force unit is 'N'
+                    ch_scale[label] = 1.0
+                elif label.startswith('M'):
+                    # assume taht the torque unit is 'Nmm'
+                    ch_scale[label] = 0.001
+                    if ch.GetUnit()=='Nm': ch_scale[label] = 1.0
+            # assign channel values
             ch_data[label] = np.squeeze(ch.GetData().GetValues())
-            ch_scale[label] = 0.001 if 'mm' in ch.GetUnit() else 1.0
-        if fp_type == 2:
-            f_raw = np.stack([ch_data['FX'], ch_data['FY'], ch_data['FZ']], axis=1)
+        if fp_type == 1:
+            cop_l_x_in = ch_data['PX']*ch_scale['PX']
+            cop_l_y_in = ch_data['PY']*ch_scale['PY']
+            t_z_in = ch_data['TZ']*ch_scale['TZ']
+            fx = ch_data['FX']*ch_scale['FX']
+            fy = ch_data['FY']*ch_scale['FY']
+            fz = ch_data['FZ']*ch_scale['FZ']
+            mx = (cop_l_y_in-o_y)*fz+o_z*fy
+            my = -o_z*fx-(cop_l_x_in-o_x)*fz
+            mz = (cop_l_x_in-o_x)*fy-(cop_l_y_in-o_y)*fx+t_z_in
+            f_raw = np.stack([fx, fy, fz], axis=1)
+            m_raw = np.stack([mx, my, mz], axis=1)
+        elif fp_type == 2:
+            f_raw = np.stack([ch_data['FX']*ch_scale['FX'], ch_data['FY']*ch_scale['FY'], ch_data['FZ']*ch_scale['FZ']], axis=1)
             m_raw = np.stack([ch_data['MX']*ch_scale['MX'], ch_data['MY']*ch_scale['MY'], ch_data['MZ']*ch_scale['MZ']], axis=1)
         elif fp_type == 4:
             fp_cal_mat = fp.GetCalMatrix()
             fm_local = np.stack([ch_data['FX'], ch_data['FY'], ch_data['FZ'], ch_data['MX'], ch_data['MY'], ch_data['MZ']], axis=1)
             fm_calib = np.dot(fp_cal_mat, fm_local.T).T
-            f_raw = fm_calib[:,0:3]
+            f_raw = np.stack([fm_calib[:,0]*ch_scale['FX'], fm_calib[:,1]*ch_scale['FY'], fm_calib[:,2]*ch_scale['FZ']], axis=1)
             m_raw = np.stack([fm_calib[:,3]*ch_scale['MX'], fm_calib[:,4]*ch_scale['MY'], fm_calib[:,5]*ch_scale['MZ']], axis=1)
         elif fp_type == 3:
             fx12 = ch_data['FX12']*ch_scale['FX12']
@@ -377,48 +410,50 @@ def get_fp_output(acq, threshold=0.0):
             mz = fp_len_b*(-fx12+fx34)+fp_len_a*(fy14-fy23)
             f_raw = np.stack([fx, fy, fz], axis=1)
             m_raw = np.stack([mx, my, mz], axis=1)
-        fm_skip_mask = np.abs(f_raw[:,2])<=threshold
-        f_local = f_raw.copy()
-        m_local = m_raw.copy()
+        if threshold is None:
+            fm_skip_mask = np.full((f_raw.shape[0],), False, dtype=bool)
+        else:
+            fm_skip_mask = np.abs(f_raw[:,2])<=threshold
+        zero_vals = np.zeros((f_raw.shape[0]), dtype=np.float32)
+        f_sensor_local = f_raw.copy()
+        m_sensor_local = m_raw.copy()
         # filter local values by threshold
-        f_local[fm_skip_mask,:] = 0.0
-        m_local[fm_skip_mask,:] = 0.0
-        f_x = f_local[:,0]
-        f_y = f_local[:,1]
-        f_z = f_local[:,2]
-        m_x = m_local[:,0]
-        m_y = m_local[:,1]
-        m_z = m_local[:,2]
-        zero_vals = np.zeros((f_local.shape[0]), dtype=np.float32)
+        f_sensor_local[fm_skip_mask,:] = 0.0
+        m_sensor_local[fm_skip_mask,:] = 0.0
+        f_x = f_sensor_local[:,0]
+        f_y = f_sensor_local[:,1]
+        f_z = f_sensor_local[:,2]
+        m_x = m_sensor_local[:,0]
+        m_y = m_sensor_local[:,1]
+        m_z = m_sensor_local[:,2]
         with np.errstate(invalid='ignore'):
-            cop_l_x = np.nan_to_num(np.where(fm_skip_mask, 0, (-m_y+(-o_z)*f_x)/f_z+o_x))
-            cop_l_y = np.nan_to_num(np.where(fm_skip_mask, 0, (m_x+(-o_z)*f_y)/f_z+o_y)) 
+            # cop_l_x = np.nan_to_num(np.where(fm_skip_mask, 0, (-m_y+(-o_z)*f_x)/f_z+o_x))
+            # cop_l_y = np.nan_to_num(np.where(fm_skip_mask, 0, (m_x+(-o_z)*f_y)/f_z+o_y)) 
+            cop_l_x = np.clip(np.nan_to_num(np.where(fm_skip_mask, 0, (-m_y+(-o_z)*f_x)/f_z+o_x)), -fp_len_x*0.5, fp_len_x*0.5)
+            cop_l_y = np.clip(np.nan_to_num(np.where(fm_skip_mask, 0, (m_x+(-o_z)*f_y)/f_z+o_y)), -fp_len_y*0.5, fp_len_y*0.5)
             cop_l_z = zero_vals
         t_z = m_z-(cop_l_x-o_x)*f_y+(cop_l_y-o_y)*f_x
         # prepare local values
         m_cop_local = np.stack([zero_vals, zero_vals, t_z], axis=1)
         cop_local = np.stack([cop_l_x, cop_l_y, cop_l_z], axis=1)
-        f_surf_local = f_local
-        m_surf_local = np.cross(np.array([o_x, o_y, o_z], dtype=np.float32), f_local)+m_local
+        f_surf_local = f_sensor_local
+        m_surf_local = np.cross(np.array([o_x, o_y, o_z], dtype=np.float32), f_sensor_local)+m_sensor_local
         # convert local values to global
-        f_global = np.dot(f_local, fp_rot_mat)
-        m_global = np.dot(m_local, fp_rot_mat)
         f_surf_global = np.dot(f_surf_local, fp_rot_mat)
         m_surf_global = np.dot(m_surf_local, fp_rot_mat)
         m_cop_global = np.dot(m_cop_local, fp_rot_mat)
         cop_global = fp_cen+np.dot(cop_local, fp_rot_mat)
-        # prepare return values
-        fp_data.update({'TYPE': fp_type})
+        # prepare return values        
         fp_data.update({'F_SURF_LOCAL': f_surf_local})
         fp_data.update({'F_SURF_GLOBAL': f_surf_global})
         fp_data.update({'M_SURF_LOCAL': m_surf_local})
         fp_data.update({'M_SURF_GLOBAL': m_surf_global})
-        fp_data.update({'M_SENSOR_LOCAL': m_local})
-        fp_data.update({'M_SENSOR_GLOBAL': m_global})
         fp_data.update({'M_COP_LOCAL': m_cop_local})
         fp_data.update({'M_COP_GLOBAL': m_cop_global})
         fp_data.update({'COP_LOCAL': cop_local})
         fp_data.update({'COP_GLOBAL': cop_global})
+        if fp_type == 1:
+            fp_data.update({'COP_LOCAL2': np.stack([cop_l_x_in, cop_l_y_in, zero_vals], axis=1)})
         fp_output.update({fp_idx: fp_data})
         fp_idx += 1
     return fp_output
