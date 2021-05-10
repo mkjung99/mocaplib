@@ -134,6 +134,9 @@ def get_sub_dict_metadata(md, dict_parent, desc=False):
                     md_val = md_val.item()
             else:
                 md_val = np.reshape(md_val, md_dims[::-1])
+        # special handling for 'FORCE_PLATFORM:CAL_MATRIX' parameter
+        if md_label=='CAL_MATRIX' and len(md_dims)==3 and (md_dims[0]==6 and md_dims[1]==6):
+            md_val = np.transpose(md_val, (0,2,1))
         if desc:
             dict_parent.update({md_label: {}})
             dict_parent[md_label].update({'VAL': md_val})
@@ -448,12 +451,14 @@ def get_fp_output(acq, threshold=None):
         fp_data.update({'F_SURF_GLOBAL': f_surf_global})
         fp_data.update({'M_SURF_LOCAL': m_surf_local})
         fp_data.update({'M_SURF_GLOBAL': m_surf_global})
+        fp_data.update({'F_COP_LOCAL': f_surf_local})
+        fp_data.update({'F_COP_GLOBAL': f_surf_global})        
         fp_data.update({'M_COP_LOCAL': m_cop_local})
         fp_data.update({'M_COP_GLOBAL': m_cop_global})
         fp_data.update({'COP_LOCAL': cop_local})
         fp_data.update({'COP_GLOBAL': cop_global})
         if fp_type == 1:
-            fp_data.update({'COP_LOCAL2': np.stack([cop_l_x_in, cop_l_y_in, zero_vals], axis=1)})
+            fp_data.update({'COP_LOCAL_INPUT': np.stack([cop_l_x_in, cop_l_y_in, zero_vals], axis=1)})
         fp_output.update({fp_idx: fp_data})
         fp_idx += 1
     return fp_output
