@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="mocaplib",
-    version="0.0.5",
+    version="0.0.6",
     author="Moon Ki Jung",
     author_email="m.k.jung@outlook.com",
     description="Library for Motion Capture data processing and analysis",
