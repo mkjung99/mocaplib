@@ -442,10 +442,14 @@ def get_fp_output(acq, threshold=None):
         f_surf_local = f_sensor_local
         m_surf_local = np.cross(np.array([o_x, o_y, o_z], dtype=np.float32), f_sensor_local)+m_sensor_local
         # convert local values to global
-        f_surf_global = np.dot(f_surf_local, fp_rot_mat)
-        m_surf_global = np.dot(m_surf_local, fp_rot_mat)
-        m_cop_global = np.dot(m_cop_local, fp_rot_mat)
-        cop_global = fp_cen+np.dot(cop_local, fp_rot_mat)
+        # f_surf_global = np.dot(f_surf_local, fp_rot_mat.T)
+        # m_surf_global = np.dot(m_surf_local, fp_rot_mat.T)
+        # m_cop_global = np.dot(m_cop_local, fp_rot_mat.T)
+        # cop_global = fp_cen+np.dot(cop_local, fp_rot_mat.T)
+        f_surf_global = np.dot(fp_rot_mat, f_surf_local.T).T
+        m_surf_global = np.dot(fp_rot_mat, m_surf_local.T).T
+        m_cop_global = np.dot(fp_rot_mat, m_cop_local.T).T
+        cop_global = fp_cen+np.dot(fp_rot_mat, cop_local.T).T
         # prepare return values        
         fp_data.update({'F_SURF_LOCAL': f_surf_local})
         fp_data.update({'F_SURF_GLOBAL': f_surf_global})
