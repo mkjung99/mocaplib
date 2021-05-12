@@ -436,31 +436,30 @@ def get_fp_output(acq, threshold=None):
             cop_l_y = np.clip(np.nan_to_num(np.where(fm_skip_mask, 0, (m_x+(-o_z)*f_y)/f_z+o_y)), -fp_len_y*0.5, fp_len_y*0.5)
             cop_l_z = zero_vals
         t_z = m_z-(cop_l_x-o_x)*f_y+(cop_l_y-o_y)*f_x
-        # prepare local values
+        # values for the force plate local output
         m_cop_local = np.stack([zero_vals, zero_vals, t_z], axis=1)
-        cop_local = np.stack([cop_l_x, cop_l_y, cop_l_z], axis=1)
+        cop_surf_local = np.stack([cop_l_x, cop_l_y, cop_l_z], axis=1)
         f_surf_local = f_sensor_local
         m_surf_local = np.cross(np.array([o_x, o_y, o_z], dtype=np.float32), f_sensor_local)+m_sensor_local
-        # convert local values to global
-        # f_surf_global = np.dot(f_surf_local, fp_rot_mat.T)
-        # m_surf_global = np.dot(m_surf_local, fp_rot_mat.T)
-        # m_cop_global = np.dot(m_cop_local, fp_rot_mat.T)
-        # cop_global = fp_cen+np.dot(cop_local, fp_rot_mat.T)
+        # values for the force plate global output
+        m_cop_global = np.dot(fp_rot_mat, m_cop_local.T).T
+        cop_surf_global = np.dot(fp_rot_mat, cop_surf_local.T).T
         f_surf_global = np.dot(fp_rot_mat, f_surf_local.T).T
         m_surf_global = np.dot(fp_rot_mat, m_surf_local.T).T
-        m_cop_global = np.dot(fp_rot_mat, m_cop_local.T).T
-        cop_global = fp_cen+np.dot(fp_rot_mat, cop_local.T).T
+        # values for the lab output
+        m_cop_lab = m_cop_global
+        cop_lab = fp_cen+cop_surf_global
+        f_cop_lab = f_surf_global
         # prepare return values        
         fp_data.update({'F_SURF_LOCAL': f_surf_local})
-        fp_data.update({'F_SURF_GLOBAL': f_surf_global})
         fp_data.update({'M_SURF_LOCAL': m_surf_local})
+        fp_data.update({'COP_SURF_LOCAL': cop_surf_local})
+        fp_data.update({'F_SURF_GLOBAL': f_surf_global})
         fp_data.update({'M_SURF_GLOBAL': m_surf_global})
-        fp_data.update({'F_COP_LOCAL': f_surf_local})
-        fp_data.update({'F_COP_GLOBAL': f_surf_global})        
-        fp_data.update({'M_COP_LOCAL': m_cop_local})
-        fp_data.update({'M_COP_GLOBAL': m_cop_global})
-        fp_data.update({'COP_LOCAL': cop_local})
-        fp_data.update({'COP_GLOBAL': cop_global})
+        fp_data.update({'COP_SURF_GLOBAL': cop_surf_global})
+        fp_data.update({'F_COP_LAB': f_cop_lab})            
+        fp_data.update({'M_COP_LAB': m_cop_lab})
+        fp_data.update({'COP_LAB': cop_lab})
         if fp_type == 1:
             fp_data.update({'COP_LOCAL_INPUT': np.stack([cop_l_x_in, cop_l_y_in, zero_vals], axis=1)})
         fp_output.update({fp_idx: fp_data})
