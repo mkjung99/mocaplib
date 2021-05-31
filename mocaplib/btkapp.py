@@ -27,9 +27,35 @@ __author__ = "Moon Ki Jung"
 import os
 import sys
 import numpy as np
+from scipy.signal import butter, filtfilt
 import re
 import btk
 #%%
+def filt_bw_bp(data, fc_low, fc_high, fs, order=2):
+    nyq = 0.5 * fs
+    low = fc_low / nyq
+    high = fc_high / nyq
+    b, a = butter(order, [low, high], analog=False, btype='bandpass', output='ba')
+    axis = -1 if len(data.shape)==1 else 0
+    y = filtfilt(b, a, data, axis, padtype='odd', padlen=3*(max(len(b),len(a))-1))
+    return y
+
+def filt_bw_bs(data, fc_low, fc_high, fs, order=2):
+    nyq = 0.5 * fs
+    low = fc_low / nyq
+    high = fc_high / nyq
+    b, a = butter(order, [low, high], analog=False, btype='bandstop', output='ba')
+    axis = -1 if len(data.shape)==1 else 0
+    y = filtfilt(b, a, data, axis, padtype='odd', padlen=3*(max(len(b),len(a))-1))
+    return y
+
+def filt_bw_lp(data, fc_low, fs, order=2):
+    nyq = 0.5 * fs
+    low = fc_low / nyq
+    b, a = butter(order, low, analog=False, btype='lowpass', output='ba')
+    axis = -1 if len(data.shape)==1 else 0
+    y = filtfilt(b, a, data, axis, padtype='odd', padlen=3*(max(len(b),len(a))-1))
+    return y
 
 def open_c3d(f_path=None):
     if f_path is None: return None
@@ -279,7 +305,7 @@ def get_fp_info(acq):
         dict_fp[i].update({'CAL_MATRIX': np.asarray(cal_matrix.T, dtype=np.float32)})
     return dict_fp
 
-def get_fp_output(acq, threshold=None):
+def get_fp_output(acq, threshold=0.0, filt_fc=None, filt_order=2, cop_nan_to_num=True):
     pfe = btk.btkForcePlatformsExtractor()
     pfe.SetInput(acq)
     pfe.Update()
@@ -288,6 +314,7 @@ def get_fp_output(acq, threshold=None):
         return None
     point_unit = acq.GetPointUnit()
     point_scale = 1.0 if point_unit=='m' else 0.001
+    analog_fps = acq.GetAnalogFrequency()
     rgx_fp = re.compile(r'\S*(\d*[FMP]\d*[XxYyZz]\d*)')
     fp_output = {}
     fp_idx = 0
@@ -337,6 +364,17 @@ def get_fp_output(acq, threshold=None):
         ch_scale = {}
         # for ch in btk.Iterate(fp.GetChannels()):
         fp_cnt_chs = fp.GetChannelNumber()
+        if filt_fc is None:
+            filt_fcs = [None]*fp_cnt_chs
+        elif type(filt_fc) in [int, float]:
+            filt_fcs = [float(filt_fc)]*fp_cnt_chs
+        elif type(filt_fc) in [list, tuple]:
+            filt_fcs = list(filt_fc)
+        elif type(filt_fc)==np.ndarray:
+            if len(filt_fc)==1:
+                filt_fcs = [filt_fc.item()]*fp_cnt_chs
+            else:
+                filt_fcs = filt_fc.tolist()
         for ch_idx in range(fp_cnt_chs):
             ch_name = fp.GetChannel(ch_idx).GetLabel()
             ch = acq.GetAnalog(ch_name)
@@ -374,7 +412,11 @@ def get_fp_output(acq, threshold=None):
                     ch_scale[label] = 0.001
                     if ch.GetUnit()=='Nm': ch_scale[label] = 1.0
             # assign channel values
-            ch_data[label] = np.squeeze(ch.GetData().GetValues())
+            lp_fc = filt_fcs[ch_idx]
+            if lp_fc is None:
+                ch_data[label] = np.squeeze(ch.GetData().GetValues())
+            else:
+                ch_data[label] = filt_bw_lp(np.squeeze(ch.GetData().GetValues()), lp_fc, analog_fps, order=filt_order)
         if fp_type == 1:
             cop_l_x_in = ch_data['PX']*ch_scale['PX']
             cop_l_y_in = ch_data['PY']*ch_scale['PY']
@@ -413,11 +455,8 @@ def get_fp_output(acq, threshold=None):
             mz = fp_len_b*(-fx12+fx34)+fp_len_a*(fy14-fy23)
             f_raw = np.stack([fx, fy, fz], axis=1)
             m_raw = np.stack([mx, my, mz], axis=1)
-        if threshold is None:
-            fm_skip_mask = np.full((f_raw.shape[0],), False, dtype=bool)
-        else:
-            fm_skip_mask = np.abs(f_raw[:,2])<=threshold
         zero_vals = np.zeros((f_raw.shape[0]), dtype=np.float32)
+        fm_skip_mask = np.abs(f_raw[:,2])<=threshold
         f_sensor_local = f_raw.copy()
         m_sensor_local = m_raw.copy()
         # filter local values by threshold
@@ -430,11 +469,14 @@ def get_fp_output(acq, threshold=None):
         m_y = m_sensor_local[:,1]
         m_z = m_sensor_local[:,2]
         with np.errstate(invalid='ignore'):
-            # cop_l_x = np.nan_to_num(np.where(fm_skip_mask, 0, (-m_y+(-o_z)*f_x)/f_z+o_x))
-            # cop_l_y = np.nan_to_num(np.where(fm_skip_mask, 0, (m_x+(-o_z)*f_y)/f_z+o_y)) 
-            cop_l_x = np.clip(np.nan_to_num(np.where(fm_skip_mask, 0, (-m_y+(-o_z)*f_x)/f_z+o_x)), -fp_len_x*0.5, fp_len_x*0.5)
-            cop_l_y = np.clip(np.nan_to_num(np.where(fm_skip_mask, 0, (m_x+(-o_z)*f_y)/f_z+o_y)), -fp_len_y*0.5, fp_len_y*0.5)
-            cop_l_z = zero_vals
+            f_z_adj = np.where(fm_skip_mask, np.inf, f_z)          
+            cop_l_x = np.where(fm_skip_mask, np.nan, np.clip((-m_y+(-o_z)*f_x)/f_z_adj+o_x, -fp_len_x*0.5, fp_len_x*0.5))
+            cop_l_y = np.where(fm_skip_mask, np.nan, np.clip((m_x+(-o_z)*f_y)/f_z_adj+o_y, -fp_len_y*0.5, fp_len_y*0.5))
+            cop_l_z = np.where(fm_skip_mask, np.nan, zero_vals)
+            if cop_nan_to_num:
+                cop_l_x = np.nan_to_num(cop_l_x)
+                cop_l_y = np.nan_to_num(cop_l_y)
+                cop_l_z = np.nan_to_num(cop_l_z)
         t_z = m_z-(cop_l_x-o_x)*f_y+(cop_l_y-o_y)*f_x
         # values for the force plate local output
         m_cop_local = np.stack([zero_vals, zero_vals, t_z], axis=1)
