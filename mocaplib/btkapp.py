@@ -28,6 +28,7 @@ import os
 import sys
 import numpy as np
 from scipy.signal import butter, filtfilt
+from scipy.spatial.transform import Rotation as R
 import re
 import btk
 #%%
@@ -96,6 +97,42 @@ def get_video_frames(acq):
     n_frs = get_num_frames(acq)
     frs = np.linspace(first_fr, last_fr, n_frs, dtype=np.int32)
     return frs
+
+def get_analog_frames(acq):
+    first_fr = get_first_frame(acq)
+    last_fr = get_last_frame(acq)  
+    av_ratio = get_analog_video_ratio(acq)
+    start_fr = np.float32(first_fr)
+    end_fr = np.float32(last_fr)+np.float32(av_ratio-1)/np.float32(av_ratio)
+    n_frs = last_fr-first_fr+1
+    analog_steps = n_frs*av_ratio
+    frs = np.linspace(start=start_fr, stop=end_fr, num=analog_steps, dtype=np.float32)
+    return frs
+
+def get_video_times(acq, from_zero=True):
+    first_fr = get_first_frame(acq)
+    last_fr = get_last_frame(acq)
+    vid_fps = get_video_fps(acq)
+    offset_fr = first_fr if from_zero else 0
+    start_t = np.float32(first_fr-offset_fr)/vid_fps
+    end_t = np.float32(last_fr-offset_fr)/vid_fps
+    n_frs = last_fr-first_fr+1
+    t = np.linspace(start=start_t, stop=end_t, num=n_frs, dtype=np.float32)
+    return t
+
+def get_analog_times(acq, from_zero=True):
+    first_fr = get_first_frame(acq)
+    last_fr = get_last_frame(acq)
+    vid_fps = get_video_fps(acq)
+    analog_fps = get_analog_fps(acq)
+    av_ratio = get_analog_video_ratio(acq)
+    offset_fr = first_fr if from_zero else 0
+    start_t = np.float32(first_fr-offset_fr)/vid_fps
+    end_t = np.float32(last_fr-offset_fr)/vid_fps+np.float32(av_ratio-1)/analog_fps
+    vid_steps = last_fr-first_fr+1
+    analog_steps = vid_steps*av_ratio
+    t = np.linspace(start=start_t, stop=end_t, num=analog_steps, dtype=np.float32)
+    return t
 
 def get_point_names(acq, tgt_types=None):
     pt_names = []
@@ -559,3 +596,96 @@ def change_point_name(acq, old_name, new_name):
     pt = acq.FindPoint(old_name).value()
     pt.SetLabel(new_name)
     
+def export_trc(acq, f_path, rot_mat=np.eye(3), filt_fc=None, filt_order=2, tgt_mkr_names=None, start_fr=None, end_fr=None, fmt='%.6f'):
+    dict_pts = get_dict_points(acq, tgt_types=['Marker'])
+    orig_start_fr = 1
+    vid_fps = int(get_video_fps(acq))
+    if start_fr is None:
+        start_fr = get_first_frame(acq)
+    if end_fr is None:
+        end_fr = get_last_frame(acq)
+    n_vid_frs = end_fr-start_fr+1
+    vid_frs = np.linspace(start_fr, end_fr, n_vid_frs, dtype=np.int32)
+    vid_times = (vid_frs-orig_start_fr)/vid_fps
+    orig_vid_frs = get_video_frames(acq)
+    frs_sel_mask = np.logical_and(orig_vid_frs>=vid_frs[0], orig_vid_frs<=vid_frs[-1])
+    total_mkr_names = list(dict_pts['LABELS'])
+    if tgt_mkr_names is None:
+        mkr_names = total_mkr_names
+    else:
+        mkr_names = [x for x in list(tgt_mkr_names) if x in total_mkr_names]
+    mkr_unit = 'mm'
+    hdr_row0 = f'PathFileType\t4\t(X/Y/Z)\t{os.path.basename(f_path)}'
+    hdr_row1 = 'DataRate\tCameraRate\tNumFrames\tNumMarkers\tUnits\tOrigDataRate\tOrigDataStartFrame\tOrigNumFrames'
+    hdr_row2 = f'{vid_fps}\t{vid_fps}\t{n_vid_frs}\t{len(mkr_names)}\t{mkr_unit}\t{vid_fps}\t{orig_start_fr}\t{orig_vid_frs.shape[0]}'
+    hdr_row3 = 'Frame#\tTime\t'+'\t\t\t'.join(mkr_names)+'\t\t'
+    hdr_row4 = '\t\t'+'\t'.join([c+str(n) for n in list(range(1, len(mkr_names)+1)) for c in ['X', 'Y', 'Z']])
+    hdr_row5 = '\t'
+    hdr_str = '\n'.join([hdr_row0, hdr_row1, hdr_row2, hdr_row3, hdr_row4, hdr_row5])
+    output_data = np.zeros((n_vid_frs, 2+3*len(mkr_names)), dtype=float)
+    output_data[:,0] = vid_frs
+    output_data[:,1] = vid_times
+    # rot_ret = R.align_vectors(a=csys_src, b=csys_tgt)
+    # rot_obj = rot_ret[0]
+    for mkr_idx, mkr_name in enumerate(mkr_names):
+        mkr_pos_raw = np.dot(rot_mat, dict_pts['DATA']['POS'][mkr_name].T).T
+        if filt_fc is None:
+            mkr_pos = mkr_pos_raw
+        else:
+            mkr_pos = filt_bw_lp(mkr_pos_raw, filt_fc, vid_fps, order=filt_order)
+        output_data[:,2+3*mkr_idx:2+3*mkr_idx+3] = mkr_pos[frs_sel_mask,:]
+    fmt_str = f'%d\t{fmt}\t'+'\t'.join([fmt]*(3*len(mkr_names)))
+    np.savetxt(f_path, output_data, fmt=fmt_str, delimiter='\t', comments='', header=hdr_str)
+    
+def export_mot(acq, f_path, rot_mat=np.eye(3), filt_fc=None, filt_order=2, threshold=0.0, start_fr=None, end_fr=None, fmt='%.6f'):
+    orig_start_fr = 1
+    if start_fr is None:
+        start_fr = get_first_frame(acq)
+    if end_fr is None:
+        end_fr = get_last_frame(acq) 
+    vid_fps = int(get_video_fps(acq))
+    anal_fps = get_analog_fps(acq)
+    av_ratio = get_analog_video_ratio(acq)
+    n_vid_frs = end_fr-start_fr+1
+    vid_frs = np.linspace(start_fr, end_fr, n_vid_frs, dtype=np.int32)
+    vid_times = (vid_frs-orig_start_fr)/vid_fps
+    first_fr = get_first_frame(acq)
+    last_fr = get_last_frame(acq)
+    anal_start_t = np.float32(first_fr-orig_start_fr)/vid_fps
+    anal_end_t = np.float32(last_fr-orig_start_fr)/vid_fps+np.float32(av_ratio-1)/anal_fps
+    anal_steps = (last_fr-first_fr+1)*av_ratio
+    anal_times = np.linspace(start=anal_start_t, stop=anal_end_t, num=anal_steps, dtype=np.float32)
+    anal_sel_mask = np.logical_and(anal_times>vid_times[0]-(1.0/anal_fps), anal_times<vid_times[-1]+(1.0/anal_fps))
+    anal_sel_times = anal_times[anal_sel_mask]
+    # rot_ret = R.align_vectors(a=csys_src, b=csys_tgt)
+    # rot_obj = rot_ret[0]
+    fp_output = get_fp_output(acq, threshold=threshold, filt_fc=filt_fc, filt_order=filt_order)
+    cnt_fp = len(fp_output)
+    output_col_names = []
+    for i in range(cnt_fp):
+        output_col_names.append(f'ground_force{i+1}_vx')
+        output_col_names.append(f'ground_force{i+1}_vy')
+        output_col_names.append(f'ground_force{i+1}_vz')        
+        output_col_names.append(f'ground_force{i+1}_px')
+        output_col_names.append(f'ground_force{i+1}_py')
+        output_col_names.append(f'ground_force{i+1}_pz')
+        output_col_names.append(f'ground_torque{i+1}_x')
+        output_col_names.append(f'ground_torque{i+1}_y')
+        output_col_names.append(f'ground_torque{i+1}_z')
+    hdr_row0 = f'{os.path.basename(f_path)}'
+    hdr_row1 = f'datacolumns\t{1+9*cnt_fp}'
+    hdr_row2 = f'datarows\t{anal_sel_times.shape[0]}'
+    hdr_row3 = f'range\t{anal_sel_times[0]:{fmt.replace("%","")}}\t{anal_sel_times[-1]:{fmt.replace("%","")}}'
+    hdr_row4 = 'endheader'
+    hdr_row5 = 'time\t'+'\t'.join(output_col_names)
+    hdr_str = '\n'.join([hdr_row0, hdr_row1, hdr_row2, hdr_row3, hdr_row4, hdr_row5])
+    output_data = np.zeros((anal_sel_times.shape[0], len(output_col_names)+1), dtype=float)
+    output_data[:,0] = anal_sel_times
+    for i in range(cnt_fp):
+        cop_lab = fp_output[i]['COP_LAB'][anal_sel_mask,:]
+        f_cop_lab = fp_output[i]['F_COP_LAB'][anal_sel_mask,:]
+        m_cop_lab = fp_output[i]['M_COP_LAB'][anal_sel_mask,:]
+        output_data[:,9*i+1:9*i+4] = np.dot(rot_mat, f_cop_lab.T).T
+        output_data[:,9*i+4:9*i+7] = np.dot(rot_mat, cop_lab.T).T
+        output_data[:,9*i+7:9*i+10] = np.dot(rot_mat, m_cop_lab.T).T
+    np.savetxt(f_path, output_data, fmt=fmt, delimiter='\t', comments='', header=hdr_str)
