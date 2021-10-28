@@ -625,8 +625,6 @@ def export_trc(acq, f_path, rot_mat=np.eye(3), filt_fc=None, filt_order=2, tgt_m
     output_data = np.zeros((n_vid_frs, 2+3*len(mkr_names)), dtype=float)
     output_data[:,0] = vid_frs
     output_data[:,1] = vid_times
-    # rot_ret = R.align_vectors(a=csys_src, b=csys_tgt)
-    # rot_obj = rot_ret[0]
     for mkr_idx, mkr_name in enumerate(mkr_names):
         mkr_pos_raw = np.dot(rot_mat, dict_pts['DATA']['POS'][mkr_name].T).T
         if filt_fc is None:
