@@ -22,7 +22,7 @@ Currently, MoCapLib is under heavy development.
 - [BTK source code GitHub](https://github.com/Biomechanical-ToolKit/BTKCore)
 - [BTK Documentation for the Python wrapping](http://biomechanical-toolkit.github.io/docs/Wrapping/Python/index.html)
 - [Python Cheat Sheet for BTK 0.3](https://pycgm2.github.io/articles/btk.html)
-- 
+
 ## Dependencies
 - [NumPy](https://numpy.org/)
 - [SciPy](https://www.scipy.org/)
