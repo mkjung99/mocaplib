@@ -18,6 +18,11 @@ Currently, MoCapLib is under heavy development.
 - [Conda-forge](https://anaconda.org/conda-forge/btk) (find the [details](https://github.com/Biomechanical-ToolKit/BTKCore/issues/28#issuecomment-572571063))
 - [PyPI](https://pypi.org/project/pyBTK/)
 
+## BTK references
+- [BTK source code GitHub](https://github.com/Biomechanical-ToolKit/BTKCore)
+- [BTK Documentation for the Python wrapping](http://biomechanical-toolkit.github.io/docs/Wrapping/Python/index.html)
+- [Python Cheat Sheet for BTK 0.3](https://pycgm2.github.io/articles/btk.html)
+- 
 ## Dependencies
 - [NumPy](https://numpy.org/)
 - [SciPy](https://www.scipy.org/)
